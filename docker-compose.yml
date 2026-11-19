@@ -1,0 +1,28 @@
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: library-database
+    restart: always
+    environment:
+      POSTGRES_USER: library_user
+      POSTGRES_PASSWORD: library_password
+      POSTGRES_DB: library_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: library-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - '5444:80'
+    depends_on:
+      - database
+
+volumes:
+  pgdata:

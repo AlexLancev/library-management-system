@@ -1,0 +1,337 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StaffRole {
+  ADMIN
+  LIBRARIAN
+  MANAGER
+}
+
+enum BookCopyStatus {
+  AVAILABLE
+  BORROWED
+  LOST
+  REPAIR
+  RESERVED 
+}
+
+enum LoanStatus {
+  ACTIVE  
+  RETURNED
+  OVERDUE
+}
+
+enum ReservationStatus {
+  ACTIVE 
+  FULFILLED 
+  CANCELLED 
+  EXPIRED 
+}
+
+enum FineReason {
+  OVERDUE 
+  LOSS 
+  DAMAGE 
+}
+
+enum FineStatus {
+  PENDING 
+  PAID 
+  WAIVED 
+}
+
+model Staff {
+  id           String  @id @default(uuid()) @db.Uuid
+  name         String
+  email        String  @unique
+  passwordHash String
+  refreshToken String? @unique
+
+  refreshTokenIssuedAt  DateTime? @db.Timestamptz()
+  refreshTokenExpiresAt DateTime? @db.Timestamptz()
+
+  role StaffRole
+
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  loansCreated Loan[] @relation("LoanCreatedBy")
+  returnsMade  Loan[] @relation("LoanReturnedBy")
+
+  @@index([role])
+  @@index([deletedAt])
+  @@index([refreshTokenExpiresAt])
+  @@map("staff")
+}
+
+model Author {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  bio       String?
+  birthYear Int?
+  country   String?
+
+  books BookAuthor[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([name])
+  @@map("authors")
+}
+
+model Genre {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @unique
+  slug String @unique
+
+  books BookGenre[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@map("genres")
+}
+
+model Book {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String
+  isbn        String?   @unique
+  description String?
+  publishedAt DateTime? @db.Timestamptz()
+  language    String    @default("ru")
+  pages       Int?
+
+  authors BookAuthor[]
+  genres  BookGenre[]
+  copies  BookCopy[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  @@index([title])
+  @@index([deletedAt])
+  @@map("books")
+}
+
+model BookAuthor {
+  book     Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  bookId   String @db.Uuid
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  authorId String @db.Uuid
+
+  @@id([bookId, authorId])
+  @@index([authorId])
+  @@map("book_authors")
+}
+
+model BookGenre {
+  book    Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  bookId  String @db.Uuid
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Restrict)
+  genreId String @db.Uuid
+
+  @@id([bookId, genreId])
+  @@index([genreId])
+  @@map("book_genres")
+}
+
+model BookCopy {
+  id        String         @id @default(uuid()) @db.Uuid
+  barcode   String         @unique
+  status    BookCopyStatus @default(AVAILABLE)
+  location  String?
+  condition String?
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  bookId String @db.Uuid
+
+  loans        Loan[]
+  reservations Reservation[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  @@index([bookId, status])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("book_copies")
+}
+
+model Reader {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  email       String? @unique
+  phoneNumber String?
+  isActive    Boolean @default(true)
+
+  passport ReaderPassport?
+
+  loans        Loan[]
+  reservations Reservation[]
+  fines        Fine[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  @@index([phoneNumber])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("readers")
+}
+
+model ReaderPassport {
+  id             String   @id @default(uuid()) @db.Uuid
+  documentNumber String   @unique
+  givenNames     String
+  surname        String
+  dateOfBirth    DateTime @db.Timestamptz()
+
+  reader   Reader @relation(fields: [readerId], references: [id], onDelete: Restrict)
+  readerId String @unique @db.Uuid
+
+  @@map("reader_passports")
+}
+
+model Loan {
+  id         String     @id @default(uuid()) @db.Uuid
+  status     LoanStatus @default(ACTIVE)
+  loanDate   DateTime   @default(now()) @db.Timestamptz()
+  dueDate    DateTime   @db.Timestamptz()
+  returnDate DateTime?  @db.Timestamptz()
+
+  reader   Reader @relation(fields: [readerId], references: [id], onDelete: Restrict)
+  readerId String @db.Uuid
+
+  copy   BookCopy @relation(fields: [copyId], references: [id], onDelete: Restrict)
+  copyId String   @db.Uuid
+
+  createdBy   Staff  @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById String @db.Uuid
+
+  returnedBy   Staff?  @relation("LoanReturnedBy", fields: [returnedById], references: [id], onDelete: Restrict)
+  returnedById String? @db.Uuid
+
+  renewals LoanRenewal[]
+  fines    Fine[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([createdById])
+  @@index([returnedById])
+  @@index([readerId, status])
+  @@index([copyId, status])
+  @@index([dueDate, status])
+  @@index([loanDate])
+  @@map("loans")
+}
+
+model LoanRenewal {
+  id         String   @id @default(uuid()) @db.Uuid
+  renewedAt  DateTime @default(now()) @db.Timestamptz()
+  oldDueDate DateTime @db.Timestamptz()
+  newDueDate DateTime @db.Timestamptz()
+
+  loan   Loan   @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loanId String @db.Uuid
+
+  @@index([loanId, renewedAt])
+  @@map("loan_renewals")
+}
+
+model Reservation {
+  id          String            @id @default(uuid()) @db.Uuid
+  status      ReservationStatus @default(ACTIVE)
+  reservedAt  DateTime          @default(now()) @db.Timestamptz()
+  expiresAt   DateTime          @db.Timestamptz()
+  fulfilledAt DateTime?         @db.Timestamptz()
+  cancelledAt DateTime?         @db.Timestamptz()
+
+  reader   Reader @relation(fields: [readerId], references: [id], onDelete: Restrict)
+  readerId String @db.Uuid
+
+  copy   BookCopy @relation(fields: [copyId], references: [id], onDelete: Restrict)
+  copyId String   @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([readerId, status])
+  @@index([copyId, status])
+  @@index([expiresAt, status])
+  @@map("reservations")
+}
+
+model Fine {
+  id       String     @id @default(uuid()) @db.Uuid
+  reason   FineReason
+  status   FineStatus @default(PENDING)
+  amount   Decimal    @db.Decimal(10, 2)
+  daysLate Int?
+  issuedAt DateTime   @default(now()) @db.Timestamptz()
+  paidAt   DateTime?  @db.Timestamptz()
+  waivedAt DateTime?  @db.Timestamptz()
+
+  reader   Reader @relation(fields: [readerId], references: [id], onDelete: Restrict)
+  readerId String @db.Uuid
+
+  loan   Loan?   @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  loanId String? @db.Uuid
+
+  payments FinePayment[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz()
+  updatedAt DateTime @updatedAt @db.Timestamptz()
+
+  @@index([readerId, status])
+  @@index([loanId])
+  @@index([status])
+  @@index([issuedAt])
+  @@map("fines")
+}
+
+model FinePayment {
+  id        String   @id @default(uuid()) @db.Uuid
+  amount    Decimal  @db.Decimal(10, 2)
+  paidAt    DateTime @default(now()) @db.Timestamptz()
+  method    String
+  reference String?
+
+  fine   Fine   @relation(fields: [fineId], references: [id], onDelete: Restrict)
+  fineId String @db.Uuid
+
+  @@index([fineId])
+  @@index([paidAt])
+  @@map("fine_payments")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  actorEmail String?
+  action     String
+  entity     String
+  entityId   String   @db.Uuid
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  occurredAt DateTime @default(now()) @db.Timestamptz()
+
+  @@index([entity, entityId])
+  @@index([actorId, occurredAt])
+  @@index([occurredAt])
+  @@map("audit_logs")
+}
